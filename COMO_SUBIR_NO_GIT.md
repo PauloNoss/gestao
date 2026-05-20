@@ -40,4 +40,6 @@ Build output directory: public
 
 Assim o site publicado fica limpo, sem mandar os arquivos do Android para a hospedagem.
 
+Se o Cloudflare estiver usando Workers com o comando `npx wrangler deploy`, o arquivo `wrangler.jsonc` ja aponta para `public` e roda `npm run build` antes do deploy.
+
 No seu PowerShell, se `npm run build` for bloqueado, use `npm.cmd run build`. Em hospedagens como Cloudflare/GitHub, `npm run build` funciona normal.

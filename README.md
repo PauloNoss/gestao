@@ -43,6 +43,8 @@ Build command: npm run build
 Build output directory: public
 ```
 
+Se estiver usando Cloudflare Workers com `npx wrangler deploy`, o projeto ja tem `wrangler.jsonc` configurado para gerar `public` e publicar somente essa pasta.
+
 Os dados financeiros ficam salvos no aparelho/navegador de cada pessoa. O site hospedado fica acessivel pelo link, mas abre vazio para quem nunca usou.
 
 ## Subir no GitHub
