@@ -1,0 +1,58 @@
+plugins {
+    id "com.android.application"
+}
+
+def signingPropsFile = rootProject.file("android-app/signing.properties")
+def signingProps = new Properties()
+if (signingPropsFile.exists()) {
+    signingPropsFile.withInputStream { signingProps.load(it) }
+}
+def signingStoreFile = signingProps["storeFile"] ?
+    new File(signingPropsFile.parentFile, signingProps["storeFile"]).canonicalFile :
+    null
+
+android {
+    namespace "com.meucaixa.app"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.meucaixa.app"
+        minSdk 23
+        targetSdk 35
+        versionCode 5
+        versionName "1.4-dashboard"
+    }
+
+    signingConfigs {
+        release {
+            if (signingPropsFile.exists()) {
+                storeFile signingStoreFile
+                storePassword signingProps["storePassword"]
+                keyAlias signingProps["keyAlias"]
+                keyPassword signingProps["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (signingPropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile "AndroidManifest.xml"
+            java.srcDirs = ["src"]
+            res.srcDirs = ["res"]
+            assets.srcDirs = ["assets"]
+        }
+    }
+}
+
+dependencies {
+    implementation "com.google.mlkit:text-recognition:16.0.1"
+}

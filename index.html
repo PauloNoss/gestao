@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Meu Caixa">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Meu Caixa</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="lock-screen" id="lockScreen">
+      <div class="lock-box">
+        <p class="eyebrow">Acesso privado</p>
+        <h1>Meu Caixa</h1>
+        <form id="unlockForm">
+          <label>
+            <span>PIN</span>
+            <input id="unlockPin" inputmode="numeric" type="password" maxlength="8" autocomplete="off">
+          </label>
+          <button class="primary-button" type="submit">Entrar</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Financas pessoais</p>
+          <h1>Meu Caixa</h1>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="lockButton" type="button" title="Bloquear" aria-label="Bloquear">PIN</button>
+          <button class="icon-button" id="jsonExportButton" type="button" title="Backup" aria-label="Backup">BK</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="summary-grid" aria-label="Resumo financeiro">
+          <article class="balance-panel">
+            <div>
+              <span class="label">Saldo do mes</span>
+              <strong id="balanceValue">R$ 0,00</strong>
+            </div>
+            <canvas id="cashflowChart" width="320" height="130" aria-label="Grafico do fluxo do mes"></canvas>
+          </article>
+          <article>
+            <span class="label">Entradas</span>
+            <strong id="incomeValue">R$ 0,00</strong>
+          </article>
+          <article>
+            <span class="label">Saidas</span>
+            <strong id="expenseValue">R$ 0,00</strong>
+          </article>
+          <article>
+            <span class="label">Cartao aberto</span>
+            <strong id="cardValue">R$ 0,00</strong>
+          </article>
+          <article>
+            <span class="label">Seguro por dia</span>
+            <strong id="dailyValue">R$ 0,00</strong>
+          </article>
+        </section>
+
+        <nav class="tabs" aria-label="Areas do app">
+          <button class="active" type="button" data-tab="today">Hoje</button>
+          <button type="button" data-tab="assistant">IA</button>
+          <button type="button" data-tab="launch">Lancar</button>
+          <button type="button" data-tab="plans">Planejar</button>
+          <button type="button" data-tab="settings">Ajustes</button>
+        </nav>
+
+        <section class="tab-panel active" id="tab-today" aria-labelledby="todayTitle">
+          <div class="section-heading">
+            <h2 id="todayTitle">Dashboard</h2>
+            <button class="text-button" id="emergencyButton" type="button">Emergencia</button>
+          </div>
+          <div id="todayCards" class="metric-grid"></div>
+          <div id="reportList" class="metric-grid"></div>
+          <div id="compareList" class="metric-grid"></div>
+          <div id="forecastList" class="simple-list"></div>
+          <div id="habitList" class="metric-grid"></div>
+          <div id="subscriptionList" class="simple-list"></div>
+          <div id="duplicateList" class="simple-list"></div>
+          <div id="budgetList" class="budget-list"></div>
+          <form id="purchaseForm">
+            <div class="form-row">
+              <label><span>Simular compra</span><input id="purchaseName" placeholder="Tenis, celular"></label>
+              <label><span>Valor</span><input id="purchaseAmount" inputmode="decimal" placeholder="300"></label>
+            </div>
+            <button class="secondary-button" type="submit">Simular impacto</button>
+          </form>
+          <div id="purchaseResult" class="assistant-answer"></div>
+          <div id="contactDashboardList" class="simple-list"></div>
+        </section>
+
+        <section class="tab-panel" id="tab-launch" aria-labelledby="launchTitle">
+          <div class="section-heading">
+            <h2 id="launchTitle">Lancamento rapido</h2>
+            <div class="segmented three" role="group" aria-label="Tipo de lancamento">
+              <button class="active" type="button" data-type="expense">Saida</button>
+              <button type="button" data-type="income">Entrada</button>
+              <button type="button" data-type="card">Cartao</button>
+            </div>
+          </div>
+
+          <div id="quickActionList" class="quick-actions"></div>
+
+          <form id="transactionForm" autocomplete="off">
+            <label>
+              <span>Descricao</span>
+              <input id="descriptionInput" placeholder="Ex: mercado, salario" required>
+            </label>
+            <div class="form-row">
+              <label>
+                <span>Valor</span>
+                <input id="amountInput" inputmode="decimal" placeholder="0,00" required>
+              </label>
+              <label>
+                <span>Data</span>
+                <input id="dateInput" type="date" required>
+              </label>
+            </div>
+            <div class="form-row">
+              <label>
+                <span>Categoria</span>
+                <select id="categoryInput"></select>
+              </label>
+              <label>
+                <span>Parcelas</span>
+                <input id="installmentsInput" inputmode="numeric" placeholder="1" value="1">
+              </label>
+            </div>
+            <button class="primary-button" type="submit">Salvar</button>
+          </form>
+
+          <div class="section-heading compact">
+            <h2>Historico</h2>
+            <select id="filterInput" aria-label="Filtrar categoria"></select>
+          </div>
+          <label>
+            <span>Busca inteligente</span>
+            <input id="searchInput" placeholder="Ex: mercado, maior que 100, entrada, ontem">
+          </label>
+          <div id="transactionList" class="transaction-list"></div>
+        </section>
+
+        <input id="monthInput" class="hidden" type="month" aria-label="Mes do relatorio">
+
+        <section class="tab-panel" id="tab-plans" aria-labelledby="plansTitle">
+          <div class="section-heading">
+            <h2 id="plansTitle">Planejamento</h2>
+            <button class="text-button" id="generateBillsButton" type="button">Gerar mes</button>
+          </div>
+          <form id="billForm">
+            <div class="form-row">
+              <label><span>Conta fixa</span><input id="billName" placeholder="Internet"></label>
+              <label><span>Valor</span><input id="billAmount" inputmode="decimal" placeholder="99,90"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Vence dia</span><input id="billDay" inputmode="numeric" placeholder="10"></label>
+              <label><span>Categoria</span><select id="billCategory"></select></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar conta fixa</button>
+          </form>
+          <div id="billList" class="simple-list"></div>
+
+          <form id="subscriptionForm">
+            <div class="form-row">
+              <label><span>Assinatura</span><input id="subscriptionName" placeholder="Netflix, Spotify"></label>
+              <label><span>Valor</span><input id="subscriptionAmount" inputmode="decimal" placeholder="39,90"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Vence dia</span><input id="subscriptionDay" inputmode="numeric" placeholder="15"></label>
+              <label><span>Categoria</span><select id="subscriptionCategory"></select></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar assinatura</button>
+          </form>
+          <div id="subscriptionSettingsList" class="simple-list"></div>
+
+          <form id="goalForm">
+            <div class="form-row">
+              <label><span>Meta</span><input id="goalName" placeholder="Reserva"></label>
+              <label><span>Objetivo</span><input id="goalTarget" inputmode="decimal" placeholder="5000"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Guardado</span><input id="goalSaved" inputmode="decimal" placeholder="500"></label>
+              <label><span>Prazo</span><input id="goalDate" type="date"></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar meta</button>
+          </form>
+          <div id="goalList" class="budget-list"></div>
+
+          <form id="wishForm">
+            <div class="form-row">
+              <label><span>Desejo</span><input id="wishName" placeholder="Celular, viagem"></label>
+              <label><span>Valor</span><input id="wishAmount" inputmode="decimal" placeholder="1500"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Prioridade</span><select id="wishPriority"><option>Alta</option><option>Media</option><option>Baixa</option></select></label>
+              <label><span>Prazo</span><input id="wishDate" type="date"></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar desejo</button>
+          </form>
+          <div id="wishList" class="simple-list"></div>
+
+          <form id="contactForm">
+            <div class="form-row">
+              <label><span>Pessoa</span><input id="contactName" placeholder="Joao, Maria"></label>
+              <label><span>Valor</span><input id="contactAmount" inputmode="decimal" placeholder="50"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Tipo</span><select id="contactKind"><option value="lent">Emprestei</option><option value="owed">Eu devo</option></select></label>
+              <label><span>Observacao</span><input id="contactNote" placeholder="Pix, almoço"></label>
+            </div>
+            <button class="secondary-button" type="submit">Registrar contato</button>
+          </form>
+          <div id="contactList" class="simple-list"></div>
+        </section>
+
+        <section class="tab-panel" id="tab-assistant" aria-labelledby="assistantTitle">
+          <div class="section-heading">
+            <h2 id="assistantTitle">IA para lancar</h2>
+            <button class="text-button" id="refreshAdviceButton" type="button">Atualizar</button>
+          </div>
+
+          <div class="ai-console">
+            <form id="smartEntryForm" autocomplete="off">
+              <label>
+                <span>Escreva, cole ou dite</span>
+                <textarea id="smartEntryInput" rows="4" placeholder="Ex: gastei 32,50 no mercado hoje"></textarea>
+              </label>
+              <div class="ai-actions">
+                <button class="primary-button" type="submit">Interpretar</button>
+                <button class="secondary-button" id="voiceButton" type="button">Audio</button>
+                <button class="secondary-button" id="continuousVoiceButton" type="button">Voz continua</button>
+                <button class="secondary-button" id="photoOcrButton" type="button">Foto</button>
+              </div>
+            </form>
+            <div id="aiPreview" class="ai-preview"></div>
+            <div class="ai-actions hidden" id="aiConfirmActions">
+              <button class="primary-button" id="confirmAiButton" type="button">Confirmar</button>
+              <button class="secondary-button" id="editAiButton" type="button">Editar manual</button>
+              <button class="danger-button" id="cancelAiButton" type="button">Cancelar</button>
+            </div>
+          </div>
+
+          <div id="adviceList" class="advice-list"></div>
+          <form id="assistantForm" class="assistant-form">
+            <label>
+              <span>Pergunte sobre seu dinheiro</span>
+              <input id="assistantInput" placeholder="Ex: posso gastar hoje?" autocomplete="off">
+            </label>
+            <button class="primary-button" type="submit">Responder</button>
+          </form>
+          <div id="assistantAnswer" class="assistant-answer"></div>
+
+          <form id="receiptForm">
+            <label>
+              <span>Comprovante por foto</span>
+              <input id="receiptFile" type="file" accept="image/*" capture="environment">
+            </label>
+            <label>
+              <span>Texto do comprovante</span>
+              <input id="receiptText" placeholder="Cole o texto/valor visivel da foto">
+            </label>
+            <button class="secondary-button" type="submit">Decifrar comprovante</button>
+          </form>
+        </section>
+
+        <section class="tab-panel" id="tab-settings" aria-labelledby="settingsTitle">
+          <div class="section-heading">
+            <h2 id="settingsTitle">Ajustes e backup</h2>
+            <button class="text-button" id="csvExportButton" type="button">CSV</button>
+          </div>
+          <form id="categoryForm">
+            <div class="form-row">
+              <label><span>Nova categoria</span><input id="categoryName" placeholder="Pet, escola"></label>
+              <label><span>Limite mensal</span><input id="categoryBudget" inputmode="decimal" placeholder="300"></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar categoria</button>
+          </form>
+          <div id="categoryList" class="simple-list"></div>
+
+          <form id="quickActionForm">
+            <div class="form-row">
+              <label><span>Botao rapido</span><input id="quickName" placeholder="Cafe"></label>
+              <label><span>Valor</span><input id="quickAmount" inputmode="decimal" placeholder="8"></label>
+            </div>
+            <div class="form-row">
+              <label><span>Tipo</span><select id="quickType"><option value="expense">Saida</option><option value="card">Cartao</option><option value="income">Entrada</option></select></label>
+              <label><span>Categoria</span><select id="quickCategory"></select></label>
+            </div>
+            <button class="secondary-button" type="submit">Adicionar botao rapido</button>
+          </form>
+          <div id="quickSettingsList" class="simple-list"></div>
+
+          <form id="pinForm">
+            <label><span>PIN atual</span><input id="currentPinInput" inputmode="numeric" type="password" maxlength="10" autocomplete="off"></label>
+            <div class="form-row">
+              <label><span>Novo PIN</span><input id="pinInput" inputmode="numeric" type="password" maxlength="10"></label>
+              <label><span>Confirmar</span><input id="pinConfirm" inputmode="numeric" type="password" maxlength="10"></label>
+            </div>
+            <button class="secondary-button" type="submit">Salvar PIN</button>
+          </form>
+
+          <div class="form-row">
+            <button class="secondary-button" id="smsImportButton" type="button">Importar SMS</button>
+            <button class="secondary-button" id="notificationImportButton" type="button">Importar notificacoes</button>
+          </div>
+          <div class="form-row">
+            <button class="secondary-button" id="notificationSettingsButton" type="button">Ativar leitura bancaria</button>
+            <button class="secondary-button" id="privacyButton" type="button">Modo privado</button>
+          </div>
+
+          <label class="file-button">
+            <span>Importar backup JSON</span>
+            <input id="jsonImportInput" type="file" accept="application/json">
+          </label>
+          <button class="danger-button" id="clearButton" type="button">Apagar dados deste aparelho</button>
+        </section>
+      </main>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <template id="transactionTemplate">
+      <article class="transaction-item">
+        <div class="transaction-icon" aria-hidden="true"></div>
+        <div class="transaction-main">
+          <strong></strong>
+          <span></span>
+        </div>
+        <div class="transaction-side">
+          <b></b>
+          <button type="button" title="Excluir" aria-label="Excluir">x</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

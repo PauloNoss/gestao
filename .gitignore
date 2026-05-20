@@ -1,0 +1,41 @@
+# Logs and temporary files
+*.log
+server.out.log
+server.err.log
+cloudflared.out.log
+cloudflared.err.log
+
+# Web build output
+public/
+
+# Android/Gradle build outputs
+.gradle/
+.gradle-home/
+build/
+android-app/build/
+android-build/
+
+# Local Android/Java toolchains downloaded for this machine
+android-sdk/
+android-sdk-src/
+jdk17/
+gradle/gradle-8.9/
+
+# Downloaded archives and local tunnel binary
+*.zip
+cloudflared.exe
+
+# APKs and signing artifacts
+dist/
+*.apk
+*.idsig
+*.jks
+*.keystore
+android-app/signing.properties
+
+# Local machine config
+local.properties
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,10 @@
+{
+  "name": "meu-caixa",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "start": "node server.mjs"
+  }
+}
