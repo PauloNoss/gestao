@@ -2,6 +2,8 @@
 
 Aplicativo pessoal de financas para celular, com dashboard, lancamentos rapidos, IA local para interpretar texto/voz/foto, lista de desejos, assinaturas, contatos/emprestimos, previsoes e modo privado.
 
+Versao 1.5 adiciona tags, calendario financeiro, score de saude financeira, modo offline reforcado, leitura melhor de comprovantes Pix e perfil empreendedor para separar pessoal/negocio.
+
 ## Rodar no computador
 
 ```bash

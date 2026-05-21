@@ -8,6 +8,7 @@ const defaultCategories = [
   { id: "saude", name: "Saude", budget: 350, income: false },
   { id: "lazer", name: "Lazer", budget: 300, income: false },
   { id: "cartao", name: "Cartao", budget: 1200, income: false },
+  { id: "empresa", name: "Empresa", budget: 1200, income: false },
   { id: "renda", name: "Renda", budget: 0, income: true },
   { id: "outros", name: "Outros", budget: 250, income: true }
 ];
@@ -16,6 +17,13 @@ const defaultQuickActions = [
   { id: "quick-mercado", label: "Mercado 50", amount: 50, type: "expense", category: "mercado" },
   { id: "quick-uber", label: "Uber 20", amount: 20, type: "expense", category: "transporte" },
   { id: "quick-lanche", label: "Lanche 30", amount: 30, type: "card", category: "lazer" }
+];
+
+const defaultTags = [
+  { id: "casa", name: "casa" },
+  { id: "empresa", name: "empresa" },
+  { id: "cliente", name: "cliente" },
+  { id: "viagem", name: "viagem" }
 ];
 
 const subscriptionKeywords = ["netflix", "spotify", "amazon", "prime", "disney", "max", "globoplay", "icloud", "google", "academia", "assinatura"];
@@ -27,13 +35,19 @@ const elements = {
   lockScreen: $("#lockScreen"),
   unlockForm: $("#unlockForm"),
   unlockPin: $("#unlockPin"),
+  profileButton: $("#profileButton"),
   lockButton: $("#lockButton"),
   balance: $("#balanceValue"),
   income: $("#incomeValue"),
   expense: $("#expenseValue"),
   card: $("#cardValue"),
   daily: $("#dailyValue"),
+  score: $("#scoreValue"),
   todayCards: $("#todayCards"),
+  scorePanel: $("#scorePanel"),
+  calendarGrid: $("#calendarGrid"),
+  businessDashboardList: $("#businessDashboardList"),
+  tagDashboardList: $("#tagDashboardList"),
   forecastList: $("#forecastList"),
   habitList: $("#habitList"),
   subscriptionList: $("#subscriptionList"),
@@ -61,6 +75,7 @@ const elements = {
   date: $("#dateInput"),
   category: $("#categoryInput"),
   installments: $("#installmentsInput"),
+  tags: $("#tagsInput"),
   filter: $("#filterInput"),
   search: $("#searchInput"),
   month: $("#monthInput"),
@@ -113,6 +128,9 @@ const elements = {
   categoryName: $("#categoryName"),
   categoryBudget: $("#categoryBudget"),
   categoryList: $("#categoryList"),
+  tagForm: $("#tagForm"),
+  tagName: $("#tagName"),
+  tagList: $("#tagList"),
   quickActionForm: $("#quickActionForm"),
   quickName: $("#quickName"),
   quickAmount: $("#quickAmount"),
@@ -127,6 +145,8 @@ const elements = {
   notificationImportButton: $("#notificationImportButton"),
   notificationSettingsButton: $("#notificationSettingsButton"),
   privacyButton: $("#privacyButton"),
+  profileToggleButton: $("#profileToggleButton"),
+  offlineModeButton: $("#offlineModeButton"),
   csvExportButton: $("#csvExportButton"),
   jsonExportButton: $("#jsonExportButton"),
   jsonImportInput: $("#jsonImportInput"),
@@ -146,8 +166,10 @@ function init() {
   bindEvents();
   fillSelects();
   render();
-  if (state.settings.pin) lockApp();
+  if (hasPinConfigured()) lockApp();
   document.body.classList.toggle("privacy-blur", Boolean(state.settings.privacyMode));
+  document.body.classList.toggle("offline-only", Boolean(state.settings.offlineOnly));
+  registerServiceWorker();
   window.handleVoiceResult = (text) => {
     elements.smartEntryInput.value = text || "";
     processSmartEntry(text || "", true);
@@ -177,6 +199,7 @@ function bindEvents() {
   });
 
   elements.form.addEventListener("submit", addTransaction);
+  elements.profileButton.addEventListener("click", toggleProfile);
   elements.smartEntryForm.addEventListener("submit", addSmartTransaction);
   elements.voiceButton.addEventListener("click", startVoiceInput);
   elements.continuousVoiceButton.addEventListener("click", toggleContinuousVoice);
@@ -194,6 +217,7 @@ function bindEvents() {
   elements.wishForm.addEventListener("submit", addWish);
   elements.contactForm.addEventListener("submit", addContactRecord);
   elements.categoryForm.addEventListener("submit", addCategory);
+  elements.tagForm.addEventListener("submit", addTag);
   elements.quickActionForm.addEventListener("submit", addQuickAction);
   elements.assistantForm.addEventListener("submit", answerAssistant);
   elements.receiptForm.addEventListener("submit", suggestFromReceipt);
@@ -211,6 +235,8 @@ function bindEvents() {
   elements.smsImportButton.addEventListener("click", importSms);
   elements.notificationImportButton.addEventListener("click", importNotifications);
   elements.notificationSettingsButton.addEventListener("click", openNotificationSettings);
+  elements.profileToggleButton.addEventListener("click", toggleProfile);
+  elements.offlineModeButton.addEventListener("click", toggleOfflineMode);
   elements.purchaseForm.addEventListener("submit", simulatePurchase);
   elements.emergencyButton.addEventListener("click", toggleEmergencyMode);
   elements.clearButton.addEventListener("click", clearAll);
@@ -221,11 +247,28 @@ function switchTab(tabName) {
   $$(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${tabName}`));
 }
 
+function toggleProfile() {
+  state.settings.activeProfile = activeProfile() === "business" ? "personal" : "business";
+  saveState();
+  render();
+  showToast(`Perfil ${profileLabel(activeProfile()).toLowerCase()} ativo.`);
+}
+
+function toggleOfflineMode() {
+  state.settings.offlineOnly = !state.settings.offlineOnly;
+  document.body.classList.toggle("offline-only", Boolean(state.settings.offlineOnly));
+  saveState();
+  render();
+  showToast(state.settings.offlineOnly ? "Modo offline total ativado neste aparelho." : "Modo offline total desativado.");
+}
+
 function addTransaction(event) {
   event.preventDefault();
   const amount = parseCurrency(elements.amount.value);
   const installments = Math.max(1, Number(elements.installments.value || 1));
   if (!amount || amount <= 0) return elements.amount.focus();
+  const tags = parseTags(elements.tags.value);
+  registerTags(tags);
 
   const base = {
     type: state.ui.type,
@@ -233,6 +276,8 @@ function addTransaction(event) {
     amount: amount / installments,
     category: elements.category.value,
     date: elements.date.value || todayISO(),
+    tags,
+    profile: activeProfile(),
     group: installments > 1 ? createId() : null
   };
 
@@ -251,6 +296,7 @@ function addTransaction(event) {
   elements.form.reset();
   elements.date.value = todayISO();
   elements.installments.value = "1";
+  elements.tags.value = "";
   renderCategoryOptions();
   render();
   showToast("Lancamento salvo.");
@@ -295,6 +341,9 @@ function confirmAiEntry() {
 
 function applyParsedEntry(parsed) {
   const contactAction = parsed.contactAction;
+  parsed.profile = parsed.profile || activeProfile();
+  parsed.tags = parsed.tags || [];
+  registerTags(parsed.tags);
   if (contactAction) {
     applyContactAction(contactAction, parsed);
     return;
@@ -381,7 +430,9 @@ function runQuickAction(action) {
     description: action.label,
     amount: action.amount,
     category: action.category,
-    date: todayISO()
+    date: todayISO(),
+    tags: action.tags || [],
+    profile: action.profile || activeProfile()
   });
   saveState();
   render();
@@ -393,7 +444,7 @@ function addBill(event) {
   const amount = parseCurrency(elements.billAmount.value);
   const day = Math.min(31, Math.max(1, Number(elements.billDay.value || 1)));
   if (!elements.billName.value.trim() || !amount) return;
-  state.bills.push({ id: createId(), name: elements.billName.value.trim(), amount, day, category: elements.billCategory.value });
+  state.bills.push({ id: createId(), name: elements.billName.value.trim(), amount, day, category: elements.billCategory.value, profile: activeProfile() });
   saveState();
   elements.billForm.reset();
   fillSelects();
@@ -410,7 +461,8 @@ function addSubscription(event) {
     name: elements.subscriptionName.value.trim(),
     amount,
     day,
-    category: elements.subscriptionCategory.value
+    category: elements.subscriptionCategory.value,
+    profile: activeProfile()
   });
   saveState();
   elements.subscriptionForm.reset();
@@ -421,9 +473,10 @@ function generateMonthlyBills() {
   const month = elements.month.value || currentMonth();
   state.bills.forEach((bill) => {
     const date = `${month}-${String(bill.day).padStart(2, "0")}`;
-    const exists = state.transactions.some((item) => item.billId === bill.id && item.date.startsWith(month));
+    if (!profileMatches(bill)) return;
+    const exists = state.transactions.some((item) => item.billId === bill.id && item.date.startsWith(month) && profileMatches(item));
     if (!exists) {
-      state.transactions.unshift({ id: createId(), billId: bill.id, type: "expense", description: bill.name, amount: bill.amount, category: bill.category, date });
+      state.transactions.unshift({ id: createId(), billId: bill.id, type: "expense", description: bill.name, amount: bill.amount, category: bill.category, date, tags: ["fixa"], profile: activeProfile() });
     }
   });
   saveState();
@@ -440,7 +493,8 @@ function addGoal(event) {
     name: elements.goalName.value.trim(),
     target,
     saved: parseCurrency(elements.goalSaved.value) || 0,
-    date: elements.goalDate.value || ""
+    date: elements.goalDate.value || "",
+    profile: activeProfile()
   });
   saveState();
   elements.goalForm.reset();
@@ -456,7 +510,8 @@ function addWish(event) {
     name: elements.wishName.value.trim(),
     amount,
     priority: elements.wishPriority.value,
-    date: elements.wishDate.value || ""
+    date: elements.wishDate.value || "",
+    profile: activeProfile()
   });
   saveState();
   elements.wishForm.reset();
@@ -475,7 +530,8 @@ function addContactRecord(event) {
     amount,
     paid: 0,
     note: elements.contactNote.value.trim(),
-    date: todayISO()
+    date: todayISO(),
+    profile: activeProfile()
   });
   saveState();
   elements.contactForm.reset();
@@ -493,6 +549,16 @@ function addCategory(event) {
   render();
 }
 
+function addTag(event) {
+  event.preventDefault();
+  const tags = parseTags(elements.tagName.value);
+  if (!tags.length) return;
+  registerTags(tags);
+  saveState();
+  elements.tagForm.reset();
+  render();
+}
+
 function addQuickAction(event) {
   event.preventDefault();
   const amount = parseCurrency(elements.quickAmount.value);
@@ -502,7 +568,9 @@ function addQuickAction(event) {
     label: elements.quickName.value.trim(),
     amount,
     type: elements.quickType.value,
-    category: elements.quickCategory.value
+    category: elements.quickCategory.value,
+    tags: [],
+    profile: activeProfile()
   });
   saveState();
   elements.quickActionForm.reset();
@@ -532,12 +600,23 @@ function renderCategoryOptions() {
 function render() {
   const month = elements.month.value || currentMonth();
   const totals = getTotals(month);
+  const score = financialScore(month);
   elements.balance.textContent = formatCurrency(totals.balance);
   elements.income.textContent = formatCurrency(totals.income);
   elements.expense.textContent = formatCurrency(totals.expense);
   elements.card.textContent = formatCurrency(totals.card);
   elements.daily.textContent = formatCurrency(getDailySafe(totals.balance, month));
+  elements.score.textContent = `${score.score}/100`;
+  elements.profileButton.textContent = activeProfile() === "business" ? "PJ" : "PF";
+  elements.profileToggleButton.textContent = `Perfil ${profileLabel(activeProfile())}`;
+  elements.offlineModeButton.textContent = state.settings.offlineOnly ? "Offline ligado" : "Offline total";
+  document.body.classList.toggle("business-profile", activeProfile() === "business");
+  document.body.classList.toggle("offline-only", Boolean(state.settings.offlineOnly));
   renderToday(month, totals);
+  renderScore(month);
+  renderCalendar(month);
+  renderBusiness(month);
+  renderTagsDashboard(month);
   renderReport(month, totals);
   renderCompare(month);
   renderBudgets(month);
@@ -548,6 +627,7 @@ function render() {
   renderContacts();
   renderAdvice();
   renderCategories();
+  renderTagsSettings();
   renderQuickActions();
   renderQuickSettings();
   renderTransactions();
@@ -569,7 +649,9 @@ function renderToday(month, totals) {
   const projection = forecastMonthEnd(month);
   const habits = habitStats(month);
   const contacts = contactTotals();
+  const score = financialScore(month);
   elements.todayCards.innerHTML = [
+    metric("Saude financeira", `${score.score}/100`, score.label),
     metric("Previsao fim do mes", formatCurrency(projection.projectedBalance), projection.message),
     metric("Modo semana", formatCurrency(weekSafeAmount()), "Seguro ate domingo"),
     metric("A receber", formatCurrency(contacts.toReceive), "Emprestimos em aberto"),
@@ -583,6 +665,71 @@ function renderToday(month, totals) {
   elements.subscriptionList.innerHTML = renderDetectedSubscriptions(month);
   elements.duplicateList.innerHTML = renderDuplicates(month);
   elements.contactDashboardList.innerHTML = renderContactSummary();
+}
+
+function renderScore(month) {
+  const result = financialScore(month);
+  elements.scorePanel.innerHTML = `
+    <div class="score-ring" style="--score:${result.score}">
+      <strong>${result.score}</strong>
+      <span>${result.label}</span>
+    </div>
+    <div class="score-copy">
+      <strong>${profileLabel(activeProfile())}</strong>
+      <span>${result.tip}</span>
+    </div>
+  `;
+}
+
+function renderCalendar(month) {
+  const days = daysInMonth(month);
+  const today = todayISO();
+  const totalsByDate = {};
+  monthlyItems(month).forEach((item) => {
+    const signed = item.type === "income" ? item.amount : -item.amount;
+    totalsByDate[item.date] = (totalsByDate[item.date] || 0) + signed;
+  });
+  state.bills.filter(profileMatches).forEach((bill) => {
+    const date = `${month}-${String(bill.day).padStart(2, "0")}`;
+    totalsByDate[date] = (totalsByDate[date] || 0) - bill.amount;
+  });
+  state.subscriptions.filter(profileMatches).forEach((item) => {
+    const date = `${month}-${String(item.day).padStart(2, "0")}`;
+    totalsByDate[date] = (totalsByDate[date] || 0) - item.amount;
+  });
+  elements.calendarGrid.innerHTML = days.map((date) => {
+    const total = totalsByDate[date] || 0;
+    const tone = total > 0 ? "income" : total < 0 ? "expense" : "";
+    const day = Number(date.slice(-2));
+    return `<button class="calendar-day ${tone} ${date === today ? "today" : ""}" type="button" data-date="${date}"><strong>${day}</strong><span>${total ? signedCurrency(total) : ""}</span></button>`;
+  }).join("");
+  $$("[data-date]").forEach((button) => {
+    button.onclick = () => {
+      const date = button.dataset.date;
+      const items = monthlyItems(month).filter((item) => item.date === date);
+      elements.search.value = date;
+      renderTransactions();
+      switchTab("launch");
+      showToast(items.length ? `${items.length} lancamento(s) em ${formatDate(date)}.` : `Sem lancamentos em ${formatDate(date)}.`);
+    };
+  });
+}
+
+function renderBusiness(month) {
+  const totals = getTotals(month, "business");
+  const items = monthlyItems(month, "business");
+  const clients = items.filter((item) => item.type === "income").length;
+  elements.businessDashboardList.innerHTML = [
+    simpleStatus("Modo empreendedor", `Receitas ${formatCurrency(totals.income)}, despesas ${formatCurrency(totals.expense + totals.card)} e lucro ${formatCurrency(totals.balance)}.`),
+    simpleStatus("Clientes e vendas", clients ? `${clients} entrada(s) de cliente/venda no mes.` : "Sem vendas registradas no mes.")
+  ].join("");
+}
+
+function renderTagsDashboard(month) {
+  const tags = topTags(month);
+  elements.tagDashboardList.innerHTML = tags.length
+    ? tags.slice(0, 5).map((tag) => simpleStatus(`#${tag.name}`, `${formatCurrency(tag.amount)} em ${tag.count} lancamento(s)`)).join("")
+    : empty("Sem tags neste mes.");
 }
 
 function renderCompare(month) {
@@ -613,17 +760,17 @@ function renderBudgets(month) {
 }
 
 function renderBills() {
-  elements.billList.innerHTML = state.bills.map((bill) => simpleItem(bill.name, `${formatCurrency(bill.amount)} - vence dia ${bill.day}`, `bills:${bill.id}`)).join("") || empty("Nenhuma conta fixa cadastrada.");
+  elements.billList.innerHTML = state.bills.filter(profileMatches).map((bill) => simpleItem(bill.name, `${formatCurrency(bill.amount)} - vence dia ${bill.day}`, `bills:${bill.id}`)).join("") || empty("Nenhuma conta fixa cadastrada.");
   bindRemoveButtons();
 }
 
 function renderSubscriptions() {
-  elements.subscriptionSettingsList.innerHTML = state.subscriptions.map((item) => simpleItem(item.name, `${formatCurrency(item.amount)} - dia ${item.day}`, `subscriptions:${item.id}`)).join("") || empty("Nenhuma assinatura cadastrada.");
+  elements.subscriptionSettingsList.innerHTML = state.subscriptions.filter(profileMatches).map((item) => simpleItem(item.name, `${formatCurrency(item.amount)} - dia ${item.day}`, `subscriptions:${item.id}`)).join("") || empty("Nenhuma assinatura cadastrada.");
   bindRemoveButtons();
 }
 
 function renderGoals() {
-  elements.goalList.innerHTML = state.goals.map((goal) => {
+  elements.goalList.innerHTML = state.goals.filter(profileMatches).map((goal) => {
     const ratio = Math.min(goal.saved / goal.target, 1);
     const status = ratio >= 1 ? "" : ratio < 0.4 ? "warning" : "";
     return progressItem(goal.name, goal.saved, goal.target, status, goal.date ? `Prazo: ${formatDate(goal.date)}` : "");
@@ -633,6 +780,7 @@ function renderGoals() {
 function renderWishes() {
   const balance = getTotals(elements.month.value || currentMonth()).balance;
   elements.wishList.innerHTML = state.wishes
+    .filter(profileMatches)
     .sort((a, b) => wishRank(a.priority) - wishRank(b.priority) || a.amount - b.amount)
     .map((wish) => {
       const status = balance >= wish.amount ? "Cabe no saldo atual" : `Faltam ${formatCurrency(wish.amount - balance)}`;
@@ -643,7 +791,7 @@ function renderWishes() {
 }
 
 function renderContacts() {
-  elements.contactList.innerHTML = state.contacts.map((item) => {
+  elements.contactList.innerHTML = state.contacts.filter(profileMatches).map((item) => {
     const open = Math.max(item.amount - item.paid, 0);
     const label = item.kind === "lent" ? "Emprestei" : "Eu devo";
     return `<div class="simple-item"><strong>${item.name}</strong><span>${label}: ${formatCurrency(open)} aberto de ${formatCurrency(item.amount)}${item.note ? ` - ${item.note}` : ""}</span><div class="form-row"><button class="text-button" type="button" data-contact-pay="${item.id}">Pagar parte</button><button class="text-button" type="button" data-remove="contacts:${item.id}">Remover</button></div></div>`;
@@ -656,7 +804,7 @@ function renderContacts() {
 
 function renderDetectedSubscriptions(month) {
   const detected = detectSubscriptions(month);
-  const manual = state.subscriptions.map((item) => `${item.name}: ${formatCurrency(item.amount)} todo dia ${item.day}`);
+  const manual = state.subscriptions.filter(profileMatches).map((item) => `${item.name}: ${formatCurrency(item.amount)} todo dia ${item.day}`);
   const lines = manual.concat(detected.map((item) => `${item.name}: ${formatCurrency(item.amount)} detectado`));
   return lines.length ? lines.map((line) => simpleStatus("Radar de assinatura", line)).join("") : empty("Nenhuma assinatura detectada.");
 }
@@ -668,7 +816,7 @@ function renderDuplicates(month) {
 
 function renderContactSummary() {
   const totals = contactTotals();
-  if (!state.contacts.length) return empty("Sem emprestimos ou dividas.");
+  if (!state.contacts.filter(profileMatches).length) return empty("Sem emprestimos ou dividas.");
   return [
     simpleStatus("Emprestimos", `Voce tem ${formatCurrency(totals.toReceive)} para receber.`),
     simpleStatus("Dividas", `Voce tem ${formatCurrency(totals.toPay)} para pagar.`)
@@ -697,7 +845,7 @@ function renderAdvice() {
 }
 
 function renderQuickActions() {
-  elements.quickActionList.innerHTML = state.quickActions.map((action) => `<button class="secondary-button" type="button" data-quick="${action.id}">${action.label}<br>${formatCurrency(action.amount)}</button>`).join("");
+  elements.quickActionList.innerHTML = state.quickActions.filter(profileMatches).map((action) => `<button class="secondary-button" type="button" data-quick="${action.id}">${action.label}<br>${formatCurrency(action.amount)}</button>`).join("");
   $$("[data-quick]").forEach((button) => {
     button.onclick = () => {
       const action = state.quickActions.find((item) => item.id === button.dataset.quick);
@@ -707,12 +855,18 @@ function renderQuickActions() {
 }
 
 function renderQuickSettings() {
-  elements.quickSettingsList.innerHTML = state.quickActions.map((action) => simpleItem(action.label, `${formatCurrency(action.amount)} - ${getCategory(action.category).name}`, `quickActions:${action.id}`)).join("") || empty("Nenhum botao rapido cadastrado.");
+  elements.quickSettingsList.innerHTML = state.quickActions.filter(profileMatches).map((action) => simpleItem(action.label, `${formatCurrency(action.amount)} - ${getCategory(action.category).name}`, `quickActions:${action.id}`)).join("") || empty("Nenhum botao rapido cadastrado.");
   bindRemoveButtons();
 }
 
 function renderCategories() {
   elements.categoryList.innerHTML = state.categories.map((category) => simpleItem(category.name, category.income ? "Entrada" : `Limite: ${formatCurrency(category.budget || 0)}`, category.id === "renda" ? "" : `category:${category.id}`)).join("");
+  bindRemoveButtons();
+}
+
+function renderTagsSettings() {
+  const discovered = getAllTags();
+  elements.tagList.innerHTML = discovered.map((tag) => simpleItem(`#${tag.name}`, "Tag personalizada", `tags:${tag.id}`)).join("") || empty("Nenhuma tag criada.");
   bindRemoveButtons();
 }
 
@@ -730,9 +884,10 @@ function renderTransactions() {
   list.sort((a, b) => b.date.localeCompare(a.date)).forEach((item) => {
     const node = elements.template.content.firstElementChild.cloneNode(true);
     const category = getCategory(item.category);
+    const tagText = item.tags?.length ? ` - ${item.tags.map((tag) => `#${tag}`).join(" ")}` : "";
     node.querySelector(".transaction-icon").textContent = item.type === "income" ? "+" : item.type === "card" ? "C" : "-";
     node.querySelector(".transaction-main strong").textContent = item.installments ? `${item.description} ${item.installment}/${item.installments}` : item.description;
-    node.querySelector(".transaction-main span").textContent = `${category.name} - ${formatDate(item.date)}`;
+    node.querySelector(".transaction-main span").textContent = `${category.name} - ${formatDate(item.date)}${tagText}`;
     const value = node.querySelector(".transaction-side b");
     value.textContent = `${item.type === "income" ? "+" : "-"} ${formatCurrency(item.amount)}`;
     value.className = item.type === "income" ? "positive" : "negative";
@@ -798,20 +953,61 @@ function buildAdvice() {
 
 function answerAssistant(event) {
   event.preventDefault();
-  const question = elements.assistantInput.value.toLowerCase();
+  const question = normalize(elements.assistantInput.value);
   const month = elements.month.value || currentMonth();
   const totals = getTotals(month);
   const top = topCategory(month);
-  if (question.includes("gastar") || question.includes("hoje")) {
+  const score = financialScore(month);
+  const contacts = contactTotals();
+  const projection = forecastMonthEnd(month);
+  const business = getTotals(month, "business");
+  const scoped = spendingFromQuestion(question, month);
+  const purchaseAmount = findAmount(question);
+
+  if (question.includes("quem me deve") || question.includes("a receber") || question.includes("me deve")) {
+    const people = state.contacts.filter((item) => profileMatches(item) && item.kind === "lent" && item.amount > item.paid);
+    elements.assistantAnswer.textContent = people.length
+      ? people.map((item) => `${item.name}: ${formatCurrency(item.amount - item.paid)}`).join(" | ")
+      : "Ninguem te deve dinheiro neste perfil.";
+  } else if (question.includes("quanto devo") || question.includes("a pagar") || question.includes("minhas dividas")) {
+    elements.assistantAnswer.textContent = contacts.toPay ? `Voce tem ${formatCurrency(contacts.toPay)} em aberto para pagar.` : "Voce nao tem dividas abertas neste perfil.";
+  } else if (question.includes("score") || question.includes("saude financeira")) {
+    elements.assistantAnswer.textContent = `Seu score financeiro esta em ${score.score}/100 (${score.label}). ${score.tip}`;
+  } else if (question.includes("calendario") || question.includes("vencimento") || question.includes("proxim")) {
+    elements.assistantAnswer.textContent = nextFinancialEvents(month).join(" | ") || "Nao encontrei eventos financeiros proximos.";
+  } else if (question.includes("negocio") || question.includes("empresa") || question.includes("lucro") || question.includes("cliente")) {
+    elements.assistantAnswer.textContent = `No modo empreendedor: receitas ${formatCurrency(business.income)}, despesas ${formatCurrency(business.expense + business.card)} e lucro ${formatCurrency(business.balance)}.`;
+  } else if (question.includes("pix") || question.includes("comprovante")) {
+    elements.assistantAnswer.textContent = "Cole o texto do Pix ou envie a foto na Central IA. Eu tento identificar valor, tipo, pessoa, data, perfil e tags antes de salvar.";
+  } else if (question.includes("tag") || question.includes("#")) {
+    const tags = topTags(month);
+    elements.assistantAnswer.textContent = tags.length ? `Tags do mes: ${tags.map((tag) => `#${tag.name} ${formatCurrency(tag.amount)}`).join(" | ")}.` : "Ainda nao ha tags neste mes.";
+  } else if (question.includes("assinatura")) {
+    const lines = state.subscriptions.filter(profileMatches).map((item) => `${item.name}: ${formatCurrency(item.amount)}`);
+    elements.assistantAnswer.textContent = lines.length ? lines.join(" | ") : "Nenhuma assinatura manual neste perfil.";
+  } else if (question.includes("duplicado")) {
+    const duplicates = findDuplicates(month);
+    elements.assistantAnswer.textContent = duplicates.length ? `${duplicates.length} possivel(is) duplicado(s) no mes.` : "Nao vi duplicados aparentes.";
+  } else if (question.includes("fim do mes") || question.includes("previsao")) {
+    elements.assistantAnswer.textContent = `Nesse ritmo voce fecha em ${formatCurrency(projection.projectedBalance)}. ${projection.tip}`;
+  } else if (purchaseAmount && (question.includes("comprar") || question.includes("compra") || question.includes("cabe"))) {
+    const after = totals.balance - parseCurrency(purchaseAmount);
+    elements.assistantAnswer.textContent = `Essa compra deixaria o saldo em ${formatCurrency(after)}. ${after < 0 ? "Eu seguraria agora." : "Cabe, mas confira metas e fatura antes."}`;
+  } else if (scoped) {
+    elements.assistantAnswer.textContent = `${scoped.label}: ${formatCurrency(scoped.amount)} em ${scoped.count} lancamento(s) neste mes.`;
+  } else if (question.includes("gastar") || question.includes("hoje")) {
     elements.assistantAnswer.textContent = `Hoje eu ficaria em ate ${formatCurrency(getDailySafe(totals.balance, month))}.`;
   } else if (question.includes("cartao") || question.includes("fatura")) {
     elements.assistantAnswer.textContent = `Seu cartao aberto no mes esta em ${formatCurrency(totals.card)}.`;
   } else if (question.includes("economizar") || question.includes("cortar")) {
     elements.assistantAnswer.textContent = top ? `Comece por ${top.name}. Ela tem ${formatCurrency(top.amount)} no mes.` : "Ainda nao ha gastos suficientes para analisar.";
   } else if (question.includes("meta")) {
-    elements.assistantAnswer.textContent = state.goals.length ? `Voce tem ${state.goals.length} meta(s). A prioridade e a que vence primeiro.` : "Cadastre uma meta para eu acompanhar.";
+    const goals = state.goals.filter(profileMatches);
+    elements.assistantAnswer.textContent = goals.length ? `Voce tem ${goals.length} meta(s). A prioridade e a que vence primeiro.` : "Cadastre uma meta para eu acompanhar.";
+  } else if (question.includes("offline")) {
+    elements.assistantAnswer.textContent = state.settings.offlineOnly ? "O modo offline total esta ativo. O app salva tudo neste aparelho." : "O app ja salva localmente. Ative Offline total nos ajustes para reforcar esse modo.";
   } else {
-    elements.assistantAnswer.textContent = `Resumo: saldo ${formatCurrency(totals.balance)}, saidas ${formatCurrency(totals.expense)}, cartao ${formatCurrency(totals.card)}.`;
+    elements.assistantAnswer.textContent = `Resumo do perfil ${profileLabel(activeProfile()).toLowerCase()}: saldo ${formatCurrency(totals.balance)}, entradas ${formatCurrency(totals.income)}, saidas ${formatCurrency(totals.expense)}, cartao ${formatCurrency(totals.card)} e score ${score.score}/100.`;
   }
 }
 
@@ -827,15 +1023,12 @@ function suggestFromReceipt(event) {
     showToast("Nao encontrei valor no comprovante.");
     return;
   }
-  elements.description.value = parsed.description;
-  elements.amount.value = String(parsed.amount).replace(".", ",");
-  elements.date.value = parsed.date;
-  state.ui.type = parsed.type;
-  $$("[data-type]").forEach((item) => item.classList.toggle("active", item.dataset.type === state.ui.type));
-  renderCategoryOptions();
-  elements.category.value = parsed.category;
-  switchTab("launch");
-  showToast("Comprovante decifrado. Confira e salve.");
+  pendingAiEntry = parsed;
+  elements.smartEntryInput.value = text;
+  elements.aiPreview.textContent = aiSummary(parsed);
+  elements.aiPreview.classList.add("show");
+  elements.aiConfirmActions.classList.remove("hidden");
+  showToast("Comprovante decifrado. Confira e confirme.");
 }
 
 function parseSmartText(text) {
@@ -845,6 +1038,35 @@ function parseSmartText(text) {
   if (!amountText) return null;
   const amount = parseCurrency(amountText);
   if (!amount) return null;
+
+  {
+    const pixInfo = inferPixInfo(normalized, raw);
+    const incomeWords = ["recebi", "recebido", "entrada", "entrou", "ganhei", "salario", "pix recebido", "venda", "renda", "credito recebido"];
+    const cardWords = ["cartao", "credito", "fatura", "parcelei"];
+    const type = pixInfo?.type || (hasAny(normalized, incomeWords) ? "income" : hasAny(normalized, cardWords) ? "card" : "expense");
+    const profile = inferProfile(normalized, type);
+    const category = inferCategory(normalized, type, profile);
+    const installments = inferInstallments(normalized);
+    const date = inferDate(normalized);
+    const description = pixInfo?.description || cleanDescription(raw, amountText) || getCategory(category).name;
+    const contactAction = inferContactAction(normalized, raw);
+    const tags = inferTags(raw, normalized, category, pixInfo, profile);
+
+    return {
+      id: createId(),
+      type,
+      description,
+      amount,
+      category,
+      date,
+      installments,
+      tags,
+      profile,
+      source: pixInfo ? "pix" : hasAny(normalized, ["nota", "cupom", "recibo", "comprovante"]) ? "receipt" : "text",
+      contactAction,
+      group: installments > 1 ? createId() : null
+    };
+  }
 
   const incomeWords = ["recebi", "recebido", "entrada", "entrou", "ganhei", "salario", "salário", "pix recebido", "venda", "renda"];
   const cardWords = ["cartao", "cartão", "credito", "crédito", "fatura", "parcelei"];
@@ -868,6 +1090,46 @@ function parseSmartText(text) {
   };
 }
 
+function inferPixInfo(normalized, raw) {
+  if (!normalized.includes("pix")) return null;
+  const received = hasAny(normalized, ["pix recebido", "recebido via pix", "voce recebeu", "recebi pix", "credito pix", "transferencia recebida", "pagador"]);
+  const sent = hasAny(normalized, ["pix enviado", "pix realizado", "pagamento pix", "comprovante de pagamento", "transferencia enviada", "debito pix", "paguei pix"]);
+  const type = received && !sent ? "income" : "expense";
+  const counterparty = extractCounterparty(raw, received);
+  const description = `${type === "income" ? "Pix recebido" : "Pix enviado"}${counterparty ? ` - ${counterparty}` : ""}`;
+  return { type, counterparty, description };
+}
+
+function extractCounterparty(raw, received) {
+  const labels = received
+    ? ["pagador", "remetente", "de", "nome"]
+    : ["favorecido", "destinatario", "recebedor", "para", "nome"];
+  const lines = String(raw || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const found = lines.find((line) => labels.some((label) => normalize(line).startsWith(label)));
+  if (!found) {
+    const match = raw.match(/(?:para|pra|de)\s+([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i);
+    return match ? cleanName(match[1]) : "";
+  }
+  const [, value = ""] = found.split(/:|-/);
+  return cleanName(value || found.replace(/^(pagador|remetente|favorecido|destinatario|recebedor|nome|para|de)\s*/i, ""));
+}
+
+function inferProfile(text, type) {
+  const businessWords = ["cliente", "fornecedor", "venda", "servico", "serviço", "cnpj", "mei", "empresa", "negocio", "negócio", "orcamento", "orçamento", "nota fiscal", "recebivel", "recebível", "lucro"];
+  if (hasAny(text, businessWords)) return "business";
+  if (type === "income" && activeProfile() === "business") return "business";
+  return activeProfile();
+}
+
+function inferTags(raw, normalized, category, pixInfo, profile) {
+  const tags = parseTags(raw.match(/#[\wÀ-ÿ-]+/g)?.join(" ") || "");
+  if (profile === "business") tags.push("empresa");
+  if (pixInfo) tags.push("pix");
+  if (pixInfo?.counterparty && profile === "business") tags.push("cliente");
+  if (category && category !== "outros") tags.push(category);
+  return unique(tags).slice(0, 6);
+}
+
 function inferContactAction(normalized, raw) {
   const paymentWords = ["paguei", "pagar parte", "abater", "quitei", "recebi de", "me pagou"];
   const lentWords = ["emprestei", "emprestimo para", "emprestei para"];
@@ -886,7 +1148,7 @@ function findAmount(text) {
   const matches = Array.from(source.matchAll(/(?:r\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{2})|(?:r\$\s*)?\d+(?:[\.,]\d{2})?/gi));
   const candidates = matches.filter((match) => source.slice(match.index + match[0].length).trim()[0]?.toLowerCase() !== "x");
   const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const totalLine = lines.reverse().find((line) => /(total|valor|pago|pagamento|debito|credito|crédito|débito)/i.test(normalize(line)) && /[\.,]\d{2}/.test(line));
+  const totalLine = lines.reverse().find((line) => /(total|valor|pago|pagamento|pix|debito|credito|crédito|débito)/i.test(normalize(line)) && /[\.,]\d{2}/.test(line));
   if (totalLine) {
     const lineMatches = Array.from(totalLine.matchAll(/(?:r\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{2})|(?:r\$\s*)?\d+(?:[\.,]\d{2})?/gi));
     if (lineMatches.length) return lineMatches[lineMatches.length - 1][0];
@@ -898,18 +1160,19 @@ function findAmount(text) {
   return chosen ? chosen[0] : "";
 }
 
-function inferCategory(text, type) {
+function inferCategory(text, type, profile = activeProfile()) {
   const rules = [
     ["mercado", ["mercado", "supermercado", "compras", "atacadao", "atacadão", "assai", "assaí"]],
     ["moradia", ["aluguel", "luz", "agua", "água", "internet", "condominio", "condomínio", "casa"]],
     ["transporte", ["uber", "99", "onibus", "ônibus", "gasolina", "posto", "combustivel", "combustível"]],
     ["saude", ["farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame"]],
     ["lazer", ["ifood", "lanche", "pizza", "restaurante", "netflix", "cinema", "bar"]],
+    ["empresa", ["cliente", "fornecedor", "cnpj", "mei", "empresa", "negocio", "servico", "nota fiscal", "material"]],
     ["cartao", ["cartao", "cartão", "fatura"]]
   ];
   if (type === "income") return "renda";
   const found = rules.find(([, words]) => hasAny(text, words));
-  return found ? found[0] : type === "card" ? "cartao" : "outros";
+  return found ? found[0] : type === "card" ? "cartao" : profile === "business" ? "empresa" : "outros";
 }
 
 function inferInstallments(text) {
@@ -927,7 +1190,8 @@ function cleanDescription(text, amountText) {
   return text
     .replace(amountText, "")
     .replace(/r\$/gi, "")
-    .replace(/\b(gastei|paguei|comprei|recebi|entrou|entrada|saida|saída|cartao|cartão|credito|crédito|hoje|ontem|amanha|amanhã)\b/gi, "")
+    .replace(/#[\wÀ-ÿ-]+/g, "")
+    .replace(/\b(gastei|paguei|comprei|recebi|entrou|entrada|saida|saída|cartao|cartão|credito|crédito|pix|hoje|ontem|amanha|amanhã)\b/gi, "")
     .replace(/\b\d{1,2}\s*x\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -938,7 +1202,8 @@ function matchesSearch(item, query) {
   const text = normalize(query);
   if (!text) return true;
   const category = normalize(getCategory(item.category).name);
-  const haystack = normalize(`${item.description} ${category} ${item.type} ${item.date}`);
+  const tags = (item.tags || []).join(" ");
+  const haystack = normalize(`${item.description} ${category} ${item.type} ${item.date} ${tags} ${profileLabel(item.profile || "personal")}`);
   const amountMatch = text.match(/(?:maior|acima)\s+(?:que\s+)?(\d+(?:[\.,]\d{1,2})?)/);
   if (amountMatch && item.amount <= parseCurrency(amountMatch[1])) return false;
   const lowerMatch = text.match(/(?:menor|abaixo)\s+(?:que\s+)?(\d+(?:[\.,]\d{1,2})?)/);
@@ -948,7 +1213,7 @@ function matchesSearch(item, query) {
   if ((text.includes("saida") || text.includes("saída") || text.includes("gasto")) && item.type === "income") return false;
   if (text.includes("ontem") && item.date !== shiftDate(-1)) return false;
   if (text.includes("hoje") && item.date !== todayISO()) return false;
-  return text.split(" ").filter(Boolean).every((word) => ["maior", "menor", "acima", "abaixo", "que"].includes(word) || haystack.includes(word));
+  return text.split(" ").filter(Boolean).every((word) => ["maior", "menor", "acima", "abaixo", "que", "tag"].includes(word) || haystack.includes(word.replace(/^#/, "")));
 }
 
 function aiSummary(parsed) {
@@ -956,7 +1221,8 @@ function aiSummary(parsed) {
     const action = parsed.contactAction.kind === "payment" ? "pagamento em contato" : parsed.contactAction.kind === "lent" ? "emprestimo" : "divida";
     return `Vou registrar ${action}: ${parsed.contactAction.person} - ${formatCurrency(parsed.amount)}.`;
   }
-  return `Vou adicionar: ${parsed.type === "income" ? "entrada" : parsed.type === "card" ? "cartao" : "saida"} de ${formatCurrency(parsed.amount)} em ${getCategory(parsed.category).name}.`;
+  const tags = parsed.tags?.length ? ` Tags: ${parsed.tags.map((tag) => `#${tag}`).join(" ")}.` : "";
+  return `Vou adicionar: ${parsed.type === "income" ? "entrada" : parsed.type === "card" ? "cartao" : "saida"} de ${formatCurrency(parsed.amount)} em ${getCategory(parsed.category).name}, perfil ${profileLabel(parsed.profile).toLowerCase()}.${tags}`;
 }
 
 function isDuplicate(parsed) {
@@ -1026,8 +1292,8 @@ function findDuplicates(month) {
   return pairs;
 }
 
-function contactTotals() {
-  return state.contacts.reduce((acc, item) => {
+function contactTotals(profile = activeProfile()) {
+  return state.contacts.filter((item) => profileMatches(item, profile)).reduce((acc, item) => {
     const open = Math.max(item.amount - item.paid, 0);
     if (item.kind === "lent") acc.toReceive += open;
     else acc.toPay += open;
@@ -1048,6 +1314,8 @@ function payContactPrompt(id) {
     amount: value,
     category: item.kind === "lent" ? "renda" : "outros",
     date: todayISO(),
+    tags: ["contato"],
+    profile: item.profile || activeProfile(),
     contactId: item.id
   });
   saveState();
@@ -1055,7 +1323,7 @@ function payContactPrompt(id) {
 }
 
 function applyContactAction(action, parsed) {
-  const existing = state.contacts.find((item) => normalize(item.name) === normalize(action.person) && item.kind === action.targetKind && item.amount > item.paid);
+  const existing = state.contacts.find((item) => normalize(item.name) === normalize(action.person) && item.kind === action.targetKind && item.amount > item.paid && profileMatches(item, parsed.profile));
   if (action.kind === "payment" && existing) {
     existing.paid = Math.min(existing.amount, existing.paid + parsed.amount);
     state.transactions.unshift({
@@ -1065,6 +1333,8 @@ function applyContactAction(action, parsed) {
       amount: parsed.amount,
       category: existing.kind === "lent" ? "renda" : "outros",
       date: parsed.date,
+      tags: unique(["contato"].concat(parsed.tags || [])),
+      profile: existing.profile || parsed.profile || activeProfile(),
       contactId: existing.id
     });
   } else {
@@ -1075,7 +1345,8 @@ function applyContactAction(action, parsed) {
       amount: parsed.amount,
       paid: 0,
       note: parsed.description,
-      date: parsed.date
+      date: parsed.date,
+      profile: parsed.profile || activeProfile()
     });
   }
   saveState();
@@ -1179,7 +1450,7 @@ function unlockApp(event) {
 }
 
 function lockApp() {
-  if (!state.settings.pin) {
+  if (!hasPinConfigured()) {
     switchTab("settings");
     showToast("Crie um PIN primeiro.");
     return;
@@ -1223,6 +1494,13 @@ function clearAll() {
 }
 
 function removeItem(collection, id) {
+  if (collection === "tags") {
+    state.tags = state.tags.filter((item) => item.id !== id);
+    state.transactions.forEach((item) => { item.tags = (item.tags || []).filter((tag) => tag !== id); });
+    saveState();
+    render();
+    return;
+  }
   state[collection] = state[collection].filter((item) => item.id !== id);
   saveState();
   render();
@@ -1245,8 +1523,8 @@ function bindRemoveButtons() {
   });
 }
 
-function getTotals(month) {
-  return monthlyItems(month).reduce((acc, item) => {
+function getTotals(month, profile = activeProfile()) {
+  return monthlyItems(month, profile).reduce((acc, item) => {
     if (item.type === "income") acc.income += item.amount;
     else if (item.type === "card") acc.card += item.amount;
     else acc.expense += item.amount;
@@ -1255,8 +1533,8 @@ function getTotals(month) {
   }, { income: 0, expense: 0, card: 0, balance: 0 });
 }
 
-function monthlyItems(month) {
-  return state.transactions.filter((item) => item.date.startsWith(month));
+function monthlyItems(month, profile = activeProfile()) {
+  return state.transactions.filter((item) => item.date.startsWith(month) && profileMatches(item, profile));
 }
 
 function expensesByCategory(items) {
@@ -1266,8 +1544,8 @@ function expensesByCategory(items) {
   }, {});
 }
 
-function topCategory(month) {
-  const totals = expensesByCategory(monthlyItems(month));
+function topCategory(month, profile = activeProfile()) {
+  const totals = expensesByCategory(monthlyItems(month, profile));
   const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   return top ? { ...getCategory(top[0]), amount: top[1] } : null;
 }
@@ -1293,17 +1571,44 @@ function loadState() {
 }
 
 function normalizeState(input) {
+  const categories = mergeCategories(input.categories?.length ? input.categories : []);
+  const tags = mergeTags(input.tags?.length ? input.tags : []);
   return {
     ui: { type: input.ui?.type || "expense" },
-    categories: input.categories?.length ? input.categories : [...defaultCategories],
-    transactions: input.transactions?.length ? input.transactions : demoTransactions(),
-    bills: input.bills || [],
-    subscriptions: input.subscriptions || [],
-    goals: input.goals || [],
-    wishes: input.wishes || [],
-    contacts: input.contacts || [],
-    quickActions: input.quickActions?.length ? input.quickActions : [...defaultQuickActions],
-    settings: input.settings || {}
+    categories,
+    tags,
+    transactions: (input.transactions?.length ? input.transactions : demoTransactions()).map(normalizeTransaction),
+    bills: (input.bills || []).map((item) => ({ ...item, profile: item.profile || "personal" })),
+    subscriptions: (input.subscriptions || []).map((item) => ({ ...item, profile: item.profile || "personal" })),
+    goals: (input.goals || []).map((item) => ({ ...item, profile: item.profile || "personal" })),
+    wishes: (input.wishes || []).map((item) => ({ ...item, profile: item.profile || "personal" })),
+    contacts: (input.contacts || []).map((item) => ({ ...item, profile: item.profile || "personal" })),
+    quickActions: (input.quickActions?.length ? input.quickActions : [...defaultQuickActions]).map((item) => ({ ...item, tags: item.tags || [], profile: item.profile || "personal" })),
+    settings: {
+      ...(input.settings || {}),
+      activeProfile: input.settings?.activeProfile || "personal",
+      offlineOnly: Boolean(input.settings?.offlineOnly)
+    }
+  };
+}
+
+function mergeCategories(existing) {
+  const byId = new Map(defaultCategories.map((category) => [category.id, { ...category }]));
+  existing.forEach((category) => byId.set(category.id, { ...category }));
+  return Array.from(byId.values());
+}
+
+function mergeTags(existing) {
+  const byId = new Map(defaultTags.map((tag) => [tag.id, { ...tag }]));
+  existing.forEach((tag) => byId.set(tag.id, { id: tag.id || slug(tag.name), name: normalizeTagName(tag.name || tag.id) }));
+  return Array.from(byId.values());
+}
+
+function normalizeTransaction(item) {
+  return {
+    ...item,
+    tags: Array.isArray(item.tags) ? unique(item.tags.map(normalizeTagName).filter(Boolean)) : [],
+    profile: item.profile || "personal"
   };
 }
 
@@ -1313,14 +1618,26 @@ function saveState() {
 
 function demoTransactions() {
   return [
-    { id: createId(), type: "income", description: "Salario", amount: 4200, category: "renda", date: todayISO() },
-    { id: createId(), type: "expense", description: "Mercado da semana", amount: 185.9, category: "mercado", date: todayISO() },
-    { id: createId(), type: "expense", description: "Internet", amount: 99.9, category: "moradia", date: todayISO() }
+    { id: createId(), type: "income", description: "Salario", amount: 4200, category: "renda", date: todayISO(), tags: ["casa"], profile: "personal" },
+    { id: createId(), type: "expense", description: "Mercado da semana", amount: 185.9, category: "mercado", date: todayISO(), tags: ["casa"], profile: "personal" },
+    { id: createId(), type: "expense", description: "Internet", amount: 99.9, category: "moradia", date: todayISO(), tags: ["fixa"], profile: "personal" }
   ];
 }
 
 function getCategory(id) {
   return state.categories.find((category) => category.id === id) || state.categories.find((category) => category.id === "outros") || { name: "Outros" };
+}
+
+function activeProfile() {
+  return state.settings.activeProfile === "business" ? "business" : "personal";
+}
+
+function profileLabel(profile = activeProfile()) {
+  return profile === "business" ? "Empreendedor" : "Pessoal";
+}
+
+function profileMatches(item, profile = activeProfile()) {
+  return (item.profile || "personal") === profile;
 }
 
 function metric(title, value, subtitle) {
@@ -1399,6 +1716,51 @@ function normalize(text) {
   return String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+function parseTags(value) {
+  return unique(String(value || "")
+    .split(/[,\s]+/)
+    .map((tag) => normalizeTagName(tag))
+    .filter(Boolean));
+}
+
+function normalizeTagName(value) {
+  return normalize(String(value || "").replace(/^#/, "")).replace(/[^a-z0-9-]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 24);
+}
+
+function registerTags(tags) {
+  parseTags(tags.join(" ")).forEach((tag) => {
+    if (!state.tags.some((item) => item.id === tag)) {
+      state.tags.push({ id: tag, name: tag });
+    }
+  });
+}
+
+function getAllTags() {
+  const byId = new Map((state.tags || []).map((tag) => [tag.id, tag]));
+  state.transactions.forEach((item) => (item.tags || []).forEach((tag) => byId.set(tag, { id: tag, name: tag })));
+  return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function topTags(month) {
+  const stats = {};
+  monthlyItems(month).forEach((item) => {
+    (item.tags || []).forEach((tag) => {
+      stats[tag] = stats[tag] || { name: tag, amount: 0, count: 0 };
+      stats[tag].amount += item.type === "income" ? 0 : item.amount;
+      stats[tag].count += 1;
+    });
+  });
+  return Object.values(stats).sort((a, b) => b.amount - a.amount || b.count - a.count);
+}
+
+function unique(items) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
+function cleanName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().replace(/[^\wÀ-ÿ .&'-]/g, "").slice(0, 32);
+}
+
 function hasAny(text, words) {
   return words.some((word) => text.includes(normalize(word)));
 }
@@ -1414,6 +1776,65 @@ function wishRank(priority) {
 
 function slug(text) {
   return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || createId();
+}
+
+function financialScore(month) {
+  const totals = getTotals(month);
+  const alerts = budgetAlerts(month);
+  const duplicates = findDuplicates(month).length;
+  const habits = habitStats(month);
+  const contacts = contactTotals();
+  let score = 60;
+  if (totals.balance > 0) score += 15;
+  if (totals.income && (totals.expense + totals.card) / totals.income < 0.75) score += 12;
+  if (totals.card / Math.max(totals.income, 1) < 0.25) score += 8;
+  if (!alerts.length) score += 8;
+  if (habits.noSpendDays >= 8) score += 5;
+  if (contacts.toPay === 0) score += 4;
+  score -= Math.min(alerts.length * 6, 18);
+  score -= Math.min(duplicates * 5, 15);
+  if (totals.balance < 0) score -= 25;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const label = score >= 80 ? "forte" : score >= 60 ? "estavel" : score >= 40 ? "atenção" : "critico";
+  const tip = score >= 80
+    ? "Seu mes esta bem controlado; mantenha limites e reserva."
+    : score >= 60
+      ? "Bom caminho, mas acompanhe fatura, assinaturas e categorias perto do limite."
+      : "Vale reduzir gastos variaveis e revisar compras repetidas agora.";
+  return { score, label, tip };
+}
+
+function nextFinancialEvents(month) {
+  const today = todayISO();
+  const events = [];
+  state.bills.filter(profileMatches).forEach((bill) => events.push({ date: `${month}-${String(bill.day).padStart(2, "0")}`, text: `${bill.name} ${formatCurrency(bill.amount)}` }));
+  state.subscriptions.filter(profileMatches).forEach((item) => events.push({ date: `${month}-${String(item.day).padStart(2, "0")}`, text: `${item.name} ${formatCurrency(item.amount)}` }));
+  return events
+    .filter((event) => event.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 5)
+    .map((event) => `${formatDate(event.date)}: ${event.text}`);
+}
+
+function spendingFromQuestion(question, month) {
+  const words = question.split(" ").filter((word) => word.length > 2 && !["quanto", "gastei", "gasto", "com", "em", "mes", "esse", "essa", "este", "esta"].includes(word));
+  const candidates = state.categories.map((item) => ({ label: item.name, term: normalize(item.name) }))
+    .concat(getAllTags().map((item) => ({ label: `#${item.name}`, term: item.name })));
+  const found = candidates.find((candidate) => question.includes(candidate.term) || words.includes(candidate.term));
+  if (!found) return null;
+  const items = monthlyItems(month).filter((item) => item.type !== "income" && normalize(`${item.description} ${getCategory(item.category).name} ${(item.tags || []).join(" ")}`).includes(found.term));
+  return { label: found.label, amount: items.reduce((sum, item) => sum + item.amount, 0), count: items.length };
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").catch(() => {
+    showToast("Offline automatico indisponivel neste navegador.");
+  });
+}
+
+function hasPinConfigured() {
+  return Boolean(state.settings.pin || state.settings.pinHash);
 }
 
 function verifyPin(pin) {

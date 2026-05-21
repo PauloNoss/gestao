@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Meu Caixa">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -34,6 +34,7 @@
           <h1>Meu Caixa</h1>
         </div>
         <div class="top-actions">
+          <button class="icon-button" id="profileButton" type="button" title="Perfil" aria-label="Alternar perfil">PF</button>
           <button class="icon-button" id="lockButton" type="button" title="Bloquear" aria-label="Bloquear">PIN</button>
           <button class="icon-button" id="jsonExportButton" type="button" title="Backup" aria-label="Backup">BK</button>
         </div>
@@ -64,6 +65,10 @@
             <span class="label">Seguro por dia</span>
             <strong id="dailyValue">R$ 0,00</strong>
           </article>
+          <article>
+            <span class="label">Score</span>
+            <strong id="scoreValue">0/100</strong>
+          </article>
         </section>
 
         <nav class="tabs" aria-label="Areas do app">
@@ -80,6 +85,13 @@
             <button class="text-button" id="emergencyButton" type="button">Emergencia</button>
           </div>
           <div id="todayCards" class="metric-grid"></div>
+          <div id="scorePanel" class="score-panel"></div>
+          <div class="section-heading compact">
+            <h2>Calendario</h2>
+          </div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+          <div id="businessDashboardList" class="simple-list"></div>
+          <div id="tagDashboardList" class="simple-list"></div>
           <div id="reportList" class="metric-grid"></div>
           <div id="compareList" class="metric-grid"></div>
           <div id="forecastList" class="simple-list"></div>
@@ -135,6 +147,10 @@
                 <input id="installmentsInput" inputmode="numeric" placeholder="1" value="1">
               </label>
             </div>
+            <label>
+              <span>Tags</span>
+              <input id="tagsInput" placeholder="obra, viagem, cliente">
+            </label>
             <button class="primary-button" type="submit">Salvar</button>
           </form>
 
@@ -224,7 +240,7 @@
 
         <section class="tab-panel" id="tab-assistant" aria-labelledby="assistantTitle">
           <div class="section-heading">
-            <h2 id="assistantTitle">IA para lancar</h2>
+            <h2 id="assistantTitle">Central IA</h2>
             <button class="text-button" id="refreshAdviceButton" type="button">Atualizar</button>
           </div>
 
@@ -232,7 +248,7 @@
             <form id="smartEntryForm" autocomplete="off">
               <label>
                 <span>Escreva, cole ou dite</span>
-                <textarea id="smartEntryInput" rows="4" placeholder="Ex: gastei 32,50 no mercado hoje"></textarea>
+                <textarea id="smartEntryInput" rows="4" placeholder="Ex: pix recebido de cliente 250 hoje #empresa"></textarea>
               </label>
               <div class="ai-actions">
                 <button class="primary-button" type="submit">Interpretar</button>
@@ -253,7 +269,7 @@
           <form id="assistantForm" class="assistant-form">
             <label>
               <span>Pergunte sobre seu dinheiro</span>
-              <input id="assistantInput" placeholder="Ex: posso gastar hoje?" autocomplete="off">
+              <input id="assistantInput" placeholder="Ex: qual meu lucro, score, calendario ou quem me deve?" autocomplete="off">
             </label>
             <button class="primary-button" type="submit">Responder</button>
           </form>
@@ -261,7 +277,7 @@
 
           <form id="receiptForm">
             <label>
-              <span>Comprovante por foto</span>
+              <span>Pix, nota ou comprovante por foto</span>
               <input id="receiptFile" type="file" accept="image/*" capture="environment">
             </label>
             <label>
@@ -277,6 +293,10 @@
             <h2 id="settingsTitle">Ajustes e backup</h2>
             <button class="text-button" id="csvExportButton" type="button">CSV</button>
           </div>
+          <div class="form-row">
+            <button class="secondary-button" id="profileToggleButton" type="button">Perfil pessoal</button>
+            <button class="secondary-button" id="offlineModeButton" type="button">Offline total</button>
+          </div>
           <form id="categoryForm">
             <div class="form-row">
               <label><span>Nova categoria</span><input id="categoryName" placeholder="Pet, escola"></label>
@@ -285,6 +305,12 @@
             <button class="secondary-button" type="submit">Adicionar categoria</button>
           </form>
           <div id="categoryList" class="simple-list"></div>
+
+          <form id="tagForm">
+            <label><span>Nova tag</span><input id="tagName" placeholder="obra, carro, cliente"></label>
+            <button class="secondary-button" type="submit">Adicionar tag</button>
+          </form>
+          <div id="tagList" class="simple-list"></div>
 
           <form id="quickActionForm">
             <div class="form-row">

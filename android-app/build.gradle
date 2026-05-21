@@ -19,8 +19,8 @@ android {
         applicationId "com.meucaixa.app"
         minSdk 23
         targetSdk 35
-        versionCode 5
-        versionName "1.4-dashboard"
+        versionCode 6
+        versionName "1.5-design-ai"
     }
 
     signingConfigs {
