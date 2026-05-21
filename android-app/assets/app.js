@@ -28,6 +28,39 @@ const defaultTags = [
 
 const subscriptionKeywords = ["netflix", "spotify", "amazon", "prime", "disney", "max", "globoplay", "icloud", "google", "academia", "assinatura"];
 
+const tourSteps = [
+  {
+    tab: "today",
+    title: "Seu painel principal",
+    text: "Aqui voce ve saldo, score, calendario, previsao do fim do mes, assinaturas, duplicados e alertas importantes."
+  },
+  {
+    tab: "assistant",
+    title: "Central IA",
+    text: "Nesta aba voce pode escrever, falar ou enviar foto de Pix, nota e comprovante. A IA interpreta e pede confirmacao antes de salvar."
+  },
+  {
+    tab: "launch",
+    title: "Lancamento rapido",
+    text: "Use botoes rapidos ou lance manualmente entradas, saidas, cartao, parcelas e tags como #obra, #cliente ou #viagem."
+  },
+  {
+    tab: "plans",
+    title: "Planejamento",
+    text: "Aqui ficam contas fixas, assinaturas, metas, lista de desejos e pessoas que te devem ou que voce deve."
+  },
+  {
+    tab: "settings",
+    title: "Perfil e ajustes",
+    text: "Troque entre pessoal e empreendedor, ative modo privado/offline, configure PIN, categorias, tags, backups, SMS e notificacoes."
+  },
+  {
+    tab: "assistant",
+    title: "Pergunte qualquer coisa",
+    text: "Voce pode perguntar: quanto posso gastar hoje, quem me deve, qual meu lucro, meu score, proximos vencimentos ou gasto por tag."
+  }
+];
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -37,6 +70,12 @@ const elements = {
   unlockPin: $("#unlockPin"),
   profileButton: $("#profileButton"),
   lockButton: $("#lockButton"),
+  profileForm: $("#profileForm"),
+  profileNameInput: $("#profileNameInput"),
+  profileMonthView: $("#profileMonthView"),
+  profileAvatar: $("#profileAvatar"),
+  profileSummary: $("#profileSummary"),
+  profileStats: $("#profileStats"),
   balance: $("#balanceValue"),
   income: $("#incomeValue"),
   expense: $("#expenseValue"),
@@ -147,22 +186,34 @@ const elements = {
   privacyButton: $("#privacyButton"),
   profileToggleButton: $("#profileToggleButton"),
   offlineModeButton: $("#offlineModeButton"),
+  tourReplayButton: $("#tourReplayButton"),
   csvExportButton: $("#csvExportButton"),
   jsonExportButton: $("#jsonExportButton"),
+  jsonExportButtonProfile: $("#jsonExportButtonProfile"),
   jsonImportInput: $("#jsonImportInput"),
   clearButton: $("#clearButton"),
+  tourOverlay: $("#tourOverlay"),
+  tourTitle: $("#tourTitle"),
+  tourText: $("#tourText"),
+  tourProgress: $("#tourProgress"),
+  tourDots: $("#tourDots"),
+  tourSkipButton: $("#tourSkipButton"),
+  tourBackButton: $("#tourBackButton"),
+  tourNextButton: $("#tourNextButton"),
   toast: $("#toast")
 };
 
 const state = loadState();
 let pendingAiEntry = null;
 let continuousVoiceActive = false;
+let tourIndex = 0;
 
 init();
 
 function init() {
   elements.date.value = todayISO();
   elements.month.value = currentMonth();
+  elements.profileMonthView.value = elements.month.value;
   bindEvents();
   fillSelects();
   render();
@@ -170,6 +221,9 @@ function init() {
   document.body.classList.toggle("privacy-blur", Boolean(state.settings.privacyMode));
   document.body.classList.toggle("offline-only", Boolean(state.settings.offlineOnly));
   registerServiceWorker();
+  if (!state.settings.onboardingDone && !hasPinConfigured()) {
+    window.setTimeout(() => startTour(false), 500);
+  }
   window.handleVoiceResult = (text) => {
     elements.smartEntryInput.value = text || "";
     processSmartEntry(text || "", true);
@@ -200,6 +254,11 @@ function bindEvents() {
 
   elements.form.addEventListener("submit", addTransaction);
   elements.profileButton.addEventListener("click", toggleProfile);
+  elements.profileForm.addEventListener("submit", saveProfile);
+  elements.profileMonthView.addEventListener("change", () => {
+    elements.month.value = elements.profileMonthView.value || currentMonth();
+    render();
+  });
   elements.smartEntryForm.addEventListener("submit", addSmartTransaction);
   elements.voiceButton.addEventListener("click", startVoiceInput);
   elements.continuousVoiceButton.addEventListener("click", toggleContinuousVoice);
@@ -227,6 +286,7 @@ function bindEvents() {
   });
   elements.csvExportButton.addEventListener("click", exportCSV);
   elements.jsonExportButton.addEventListener("click", exportJSON);
+  elements.jsonExportButtonProfile.addEventListener("click", exportJSON);
   elements.jsonImportInput.addEventListener("change", importJSON);
   elements.pinForm.addEventListener("submit", savePin);
   elements.unlockForm.addEventListener("submit", unlockApp);
@@ -237,6 +297,10 @@ function bindEvents() {
   elements.notificationSettingsButton.addEventListener("click", openNotificationSettings);
   elements.profileToggleButton.addEventListener("click", toggleProfile);
   elements.offlineModeButton.addEventListener("click", toggleOfflineMode);
+  elements.tourReplayButton.addEventListener("click", () => startTour(true));
+  elements.tourSkipButton.addEventListener("click", () => finishTour(true));
+  elements.tourBackButton.addEventListener("click", previousTourStep);
+  elements.tourNextButton.addEventListener("click", nextTourStep);
   elements.purchaseForm.addEventListener("submit", simulatePurchase);
   elements.emergencyButton.addEventListener("click", toggleEmergencyMode);
   elements.clearButton.addEventListener("click", clearAll);
@@ -260,6 +324,57 @@ function toggleOfflineMode() {
   saveState();
   render();
   showToast(state.settings.offlineOnly ? "Modo offline total ativado neste aparelho." : "Modo offline total desativado.");
+}
+
+function saveProfile(event) {
+  event.preventDefault();
+  state.settings.profileName = elements.profileNameInput.value.trim() || "Meu Caixa";
+  elements.month.value = elements.profileMonthView.value || currentMonth();
+  saveState();
+  render();
+  showToast("Perfil atualizado.");
+}
+
+function startTour(force = false) {
+  if (!force && state.settings.onboardingDone) return;
+  tourIndex = 0;
+  elements.tourOverlay.classList.remove("hidden");
+  showTourStep();
+}
+
+function showTourStep() {
+  const step = tourSteps[tourIndex];
+  switchTab(step.tab);
+  elements.tourTitle.textContent = step.title;
+  elements.tourText.textContent = step.text;
+  elements.tourProgress.textContent = `${tourIndex + 1}/${tourSteps.length}`;
+  elements.tourBackButton.disabled = tourIndex === 0;
+  elements.tourNextButton.textContent = tourIndex === tourSteps.length - 1 ? "Concluir" : "Proximo";
+  elements.tourDots.innerHTML = tourSteps
+    .map((_, index) => `<span class="${index === tourIndex ? "active" : ""}"></span>`)
+    .join("");
+}
+
+function nextTourStep() {
+  if (tourIndex >= tourSteps.length - 1) {
+    finishTour(false);
+    return;
+  }
+  tourIndex += 1;
+  showTourStep();
+}
+
+function previousTourStep() {
+  tourIndex = Math.max(0, tourIndex - 1);
+  showTourStep();
+}
+
+function finishTour(skipped) {
+  state.settings.onboardingDone = true;
+  state.settings.onboardingCompletedAt = new Date().toISOString();
+  saveState();
+  elements.tourOverlay.classList.add("hidden");
+  showToast(skipped ? "Guia pulado. Voce pode rever em Perfil." : "Guia concluido. Bora organizar esse caixa.");
 }
 
 function addTransaction(event) {
@@ -601,6 +716,12 @@ function render() {
   const month = elements.month.value || currentMonth();
   const totals = getTotals(month);
   const score = financialScore(month);
+  const displayName = state.settings.profileName || "Meu Caixa";
+  elements.profileMonthView.value = month;
+  elements.profileNameInput.value = displayName === "Meu Caixa" ? "" : displayName;
+  elements.profileAvatar.textContent = initials(displayName);
+  elements.profileSummary.textContent = `${displayName} - ${profileLabel(activeProfile())}`;
+  elements.profileStats.textContent = `${monthlyItems(month).length} lancamento(s), score ${score.score}/100, dados neste aparelho.`;
   elements.balance.textContent = formatCurrency(totals.balance);
   elements.income.textContent = formatCurrency(totals.income);
   elements.expense.textContent = formatCurrency(totals.expense);
@@ -1587,6 +1708,8 @@ function normalizeState(input) {
     settings: {
       ...(input.settings || {}),
       activeProfile: input.settings?.activeProfile || "personal",
+      profileName: input.settings?.profileName || "Meu Caixa",
+      onboardingDone: Boolean(input.settings?.onboardingDone),
       offlineOnly: Boolean(input.settings?.offlineOnly)
     }
   };
@@ -1638,6 +1761,16 @@ function profileLabel(profile = activeProfile()) {
 
 function profileMatches(item, profile = activeProfile()) {
   return (item.profile || "personal") === profile;
+}
+
+function initials(name) {
+  const letters = String(name || "Meu Caixa")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  return letters || "MC";
 }
 
 function metric(title, value, subtitle) {

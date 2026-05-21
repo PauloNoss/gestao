@@ -1,4 +1,4 @@
-const cacheName = "meu-caixa-cache-v4-design-ai";
+const cacheName = "meu-caixa-cache-v5-onboarding";
 const files = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg", "apple-touch-icon.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (event) => {

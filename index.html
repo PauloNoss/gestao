@@ -76,7 +76,7 @@
           <button type="button" data-tab="assistant">IA</button>
           <button type="button" data-tab="launch">Lancar</button>
           <button type="button" data-tab="plans">Planejar</button>
-          <button type="button" data-tab="settings">Ajustes</button>
+          <button type="button" data-tab="settings">Perfil</button>
         </nav>
 
         <section class="tab-panel active" id="tab-today" aria-labelledby="todayTitle">
@@ -290,12 +290,31 @@
 
         <section class="tab-panel" id="tab-settings" aria-labelledby="settingsTitle">
           <div class="section-heading">
-            <h2 id="settingsTitle">Ajustes e backup</h2>
+            <h2 id="settingsTitle">Perfil e ajustes</h2>
             <button class="text-button" id="csvExportButton" type="button">CSV</button>
           </div>
+          <div class="profile-panel">
+            <div class="profile-avatar" id="profileAvatar">MC</div>
+            <div>
+              <p class="eyebrow">Perfil ativo</p>
+              <h2 id="profileSummary">Meu Caixa</h2>
+              <span id="profileStats">Tudo salvo neste aparelho.</span>
+            </div>
+          </div>
+          <form id="profileForm">
+            <div class="form-row">
+              <label><span>Nome do perfil</span><input id="profileNameInput" placeholder="Ex: Paulo, Casa, Negocio"></label>
+              <label><span>Mes de trabalho</span><input id="profileMonthView" type="month"></label>
+            </div>
+            <button class="secondary-button" type="submit">Salvar perfil</button>
+          </form>
           <div class="form-row">
             <button class="secondary-button" id="profileToggleButton" type="button">Perfil pessoal</button>
             <button class="secondary-button" id="offlineModeButton" type="button">Offline total</button>
+          </div>
+          <div class="form-row">
+            <button class="secondary-button" id="tourReplayButton" type="button">Ver guia</button>
+            <button class="secondary-button" id="privacyButton" type="button">Modo privado</button>
           </div>
           <form id="categoryForm">
             <div class="form-row">
@@ -340,7 +359,7 @@
           </div>
           <div class="form-row">
             <button class="secondary-button" id="notificationSettingsButton" type="button">Ativar leitura bancaria</button>
-            <button class="secondary-button" id="privacyButton" type="button">Modo privado</button>
+            <button class="secondary-button" id="jsonExportButtonProfile" type="button">Backup JSON</button>
           </div>
 
           <label class="file-button">
@@ -352,6 +371,20 @@
       </main>
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="tour-overlay hidden" id="tourOverlay" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+      <div class="tour-bubble">
+        <div class="tour-progress" id="tourProgress">1/6</div>
+        <h2 id="tourTitle">Bem-vindo</h2>
+        <p id="tourText">Um guia rapido para usar o Meu Caixa.</p>
+        <div class="tour-dots" id="tourDots"></div>
+        <div class="tour-actions">
+          <button class="text-button" id="tourSkipButton" type="button">Pular</button>
+          <button class="secondary-button" id="tourBackButton" type="button">Voltar</button>
+          <button class="primary-button" id="tourNextButton" type="button">Proximo</button>
+        </div>
+      </div>
     </div>
 
     <template id="transactionTemplate">
